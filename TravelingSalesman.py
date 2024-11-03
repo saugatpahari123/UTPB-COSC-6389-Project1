@@ -1,134 +1,231 @@
 import math
 import random
 import tkinter as tk
-from tkinter import *
+from tkinter import Menu, Canvas, FALSE
 
-num_cities = 25
-num_roads = 100
-city_scale = 5
-road_width = 4
-padding = 100
+# Configuration parameters
+NUM_CITIES = 25
+CITY_SCALE = 5
+ROAD_WIDTH = 2
+PADDING = 50
 
 
 class Node:
-    def __init__(self, x, y):
+    """Represents a city node with an (x, y) position and an index identifier."""
+
+    def __init__(self, x, y, index):
         self.x = x
         self.y = y
+        self.index = index
 
-    def draw(self, canvas, color='black'):
-        canvas.create_oval(self.x-city_scale, self.y-city_scale, self.x+city_scale, self.y+city_scale, fill=color)
+    def draw(self, canvas, color='yellow'):
+        """Draws the city node on the canvas."""
+        canvas.create_oval(
+            self.x - CITY_SCALE * 2, self.y - CITY_SCALE * 2,
+            self.x + CITY_SCALE * 2, self.y + CITY_SCALE * 2,
+            fill=color, outline='black'
+        )
+        canvas.create_text(
+            self.x, self.y - CITY_SCALE * 3,
+            text=str(self.index),
+            font=('Arial', 12),
+            fill='blue'
+        )
 
 
 class Edge:
+    """Represents an edge between two cities."""
+
     def __init__(self, a, b):
         self.city_a = a
         self.city_b = b
-        self.length = math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2)
+        self.length = math.hypot(a.x - b.x, a.y - b.y)
 
-    def draw(self, canvas, color='grey', style=(2, 4)):
-        canvas.create_line(self.city_a.x,
-                           self.city_a.y,
-                           self.city_b.x,
-                           self.city_b.y,
-                           fill=color,
-                           width=road_width,
-                           dash=style)
+    def draw(self, canvas, color='grey', style=None):
+        """Draws the edge on the canvas."""
+        kwargs = {'fill': color, 'width': ROAD_WIDTH}
+        if style:
+            kwargs['dash'] = style
+        canvas.create_line(
+            self.city_a.x, self.city_a.y,
+            self.city_b.x, self.city_b.y,
+            **kwargs
+        )
 
 
-class UI(tk.Tk):
+class TSPSolver:
+    """Solver for the Traveling Salesman Problem using Simulated Annealing."""
+
+    def __init__(self, cities):
+        self.cities = cities
+        self.num_cities = len(cities)
+        self.distance_matrix = self.calculate_distance_matrix()
+        self.current_solution = list(range(self.num_cities))
+        random.shuffle(self.current_solution)
+        self.best_solution = self.current_solution[:]
+        self.best_distance = self.calculate_total_distance(self.best_solution)
+        self.temperature = 10000
+        self.cooling_rate = 0.995
+
+    def calculate_distance_matrix(self):
+        """Calculates the distance matrix for all city pairs."""
+        matrix = [[0] * self.num_cities for _ in range(self.num_cities)]
+        for i in range(self.num_cities):
+            for j in range(i + 1, self.num_cities):
+                dist = math.hypot(
+                    self.cities[i].x - self.cities[j].x,
+                    self.cities[i].y - self.cities[j].y
+                )
+                matrix[i][j] = dist
+                matrix[j][i] = dist
+        return matrix
+
+    def calculate_total_distance(self, solution):
+        """Calculates the total distance of the given solution."""
+        return sum(
+            self.distance_matrix[solution[i]][solution[(i + 1) % len(solution)]]
+            for i in range(len(solution))
+        )
+
+    def swap_cities(self, solution):
+        """Creates a new solution by swapping two cities."""
+        new_solution = solution[:]
+        i, j = random.sample(range(self.num_cities), 2)
+        new_solution[i], new_solution[j] = new_solution[j], new_solution[i]
+        return new_solution
+
+    def anneal(self):
+        """Performs one iteration of the annealing process."""
+        new_solution = self.swap_cities(self.current_solution)
+        current_distance = self.calculate_total_distance(self.current_solution)
+        new_distance = self.calculate_total_distance(new_solution)
+        acceptance_prob = self.acceptance_probability(current_distance, new_distance, self.temperature)
+
+        if acceptance_prob > random.random():
+            self.current_solution = new_solution
+            current_distance = new_distance
+            if current_distance < self.best_distance:
+                self.best_distance = current_distance
+                self.best_solution = self.current_solution[:]
+
+        self.temperature *= self.cooling_rate
+
+    def acceptance_probability(self, current_distance, new_distance, temperature):
+        """Calculates the probability of accepting a worse solution."""
+        if new_distance < current_distance:
+            return 1.0
+        return math.exp((current_distance - new_distance) / temperature)
+
+
+class TSPUI(tk.Tk):
+    """User interface for visualizing the TSP solution."""
+
     def __init__(self):
-        tk.Tk.__init__(self)
-        # Set the title of the window
-        self.title("Traveling Salesman")
-        # Hide the minimize/maximize/close decorations at the top of the window frame
-        #   (effectively making it act like a full-screen application)
+        super().__init__()
+        self.title("Traveling Salesman Problem")
         self.option_add("*tearOff", FALSE)
-        # Get the screen width and height
-        width, height = self.winfo_screenwidth(), self.winfo_screenheight()
-        # Set the window width and height to fill the screen
-        self.geometry("%dx%d+0+0" % (width, height))
-        # Set the window content to fill the width * height area
+        self.width, self.height = self.winfo_screenwidth(), self.winfo_screenheight()
+        self.geometry(f"{self.width}x{self.height}+0+0")
         self.state("zoomed")
 
+        # Canvas and setup
         self.canvas = Canvas(self)
-        self.canvas.place(x=0, y=0, width=width, height=height)
-        w = width-padding
-        h = height-padding*2
+        self.canvas.place(x=0, y=0, width=self.width, height=self.height)
+        self.w = self.width - PADDING * 2
+        self.h = self.height - PADDING * 2
 
-        cities_list = []
-        roads_list = []
-        edge_list = []
+        # City list and solver
+        self.cities_list = []
+        self.tsp_solver = None
+        self.is_running = False
 
-        def add_city():
-            x = random.randint(padding, w)
-            y = random.randint(padding, h)
+        # Menu bar setup
+        self.create_menu()
 
-            node = Node(x, y)
-            cities_list.append(node)
-
-        def add_road():
-            a = random.randint(0, len(cities_list)-1)
-            b = random.randint(0, len(cities_list)-1)
-
-            road = f'{min(a, b)},{max(a, b)}'
-            while a == b or road in roads_list:
-                a = random.randint(0, len(cities_list)-1)
-                b = random.randint(0, len(cities_list)-1)
-                road = f'{min(a, b)},{max(a, b)}'
-
-            edge = Edge(cities_list[a], cities_list[b])
-            roads_list.append(road)
-            edge_list.append(edge)
-
-        def generate_city():
-            for c in range(num_cities):
-                add_city()
-            for r in range(num_roads):
-                add_road()
-
-        def draw_city():
-            #clear_canvas()
-            for e in edge_list:
-                e.draw(self.canvas)
-            for n in cities_list:
-                n.draw(self.canvas)
-
-        def draw_genome(genome):
-            #clear_canvas()
-            for e in range(num_roads):
-                edge = edge_list[e]
-                color = 'grey'
-                style = (2, 4)
-                if genome[e]:
-                    color = 'red'
-                    style = (1, 0)
-                edge.draw(self.canvas, color, style)
-            for n in cities_list:
-                n.draw(self.canvas, 'red')
-
-        # We create a standard banner menu bar and attach it to the window
+    def create_menu(self):
+        """Creates the main menu for generating cities and running the solver."""
         menu_bar = Menu(self)
-        self['menu'] = menu_bar
+        self.config(menu=menu_bar)
+        tsp_menu = Menu(menu_bar, tearoff=False)
+        menu_bar.add_cascade(menu=tsp_menu, label='Salesman')
 
-        # We have to individually create the "File", "Edit", etc. cascade menus, and this is the first
-        menu_TS = Menu(menu_bar)
-        # The underline=0 parameter doesn't actually do anything by itself,
-        #   but if you also create an "accelerator" so that users can use the standard alt+key shortcuts
-        #   for the menu, it will underline the appropriate key to indicate the shortcut
-        menu_bar.add_cascade(menu=menu_TS, label='Salesman', underline=0)
+        tsp_menu.add_command(label="Generate", command=self.generate)
+        tsp_menu.add_command(label="Run", command=self.start_solver)
 
-        def generate():
-            generate_city()
-            draw_city()
-        # The add_command function adds an item to a menu, as opposed to add_cascade which adds a sub-menu
-        # Note that we use command=generate without the () - we're telling it which function to call,
-        #   not actually calling the function as part of the add_command
-        menu_TS.add_command(label="Generate", command=generate, underline=0)
+    def generate(self):
+        """Generates random cities on the canvas."""
+        self.clear_canvas()
+        self.cities_list.clear()
+        for i in range(NUM_CITIES):
+            self.add_city(i)
+        self.draw_cities()
 
-        # We have to call self.mainloop() in our constructor (__init__) to start the UI loop and display the window
-        self.mainloop()
+    def add_city(self, index):
+        """Adds a city with a random location to the cities list."""
+        x = random.randint(PADDING, self.w)
+        y = random.randint(PADDING, self.h)
+        node = Node(x, y, index)
+        self.cities_list.append(node)
+
+    def draw_cities(self):
+        """Draws all cities on the canvas."""
+        for city in self.cities_list:
+            city.draw(self.canvas)
+
+    def clear_canvas(self):
+        """Clears the canvas."""
+        self.canvas.delete("all")
+
+    def start_solver(self):
+        """Starts the TSP solver using Simulated Annealing."""
+        if not self.cities_list:
+            self.generate()
+        self.tsp_solver = TSPSolver(self.cities_list)
+        self.is_running = True
+        self.run_solver()
+
+    def run_solver(self):
+        """Runs the solver and updates the visualization in real-time."""
+        if self.is_running and self.tsp_solver.temperature > 1:
+            self.tsp_solver.anneal()
+            self.clear_canvas()
+            self.draw_solution(self.tsp_solver.current_solution)
+            self.canvas.update()
+            self.after(1, self.run_solver)
+        else:
+            self.is_running = False
+            print(f"Best distance found: {self.tsp_solver.best_distance}")
+            self.display_best_distance()
+
+    def display_best_distance(self):
+        """Displays the best distance found on the canvas."""
+        self.canvas.create_text(
+            PADDING, PADDING,
+            text=f"Best Distance Found: {int(self.tsp_solver.best_distance)}",
+            font=('Arial', 20, 'bold'),
+            fill='green',
+            anchor='nw'
+        )
+
+    def draw_solution(self, solution):
+        """Draws the current solution path on the canvas."""
+        for i in range(len(solution)):
+            city_a = self.cities_list[solution[i]]
+            city_b = self.cities_list[solution[(i + 1) % len(solution)]]
+            edge = Edge(city_a, city_b)
+            edge.draw(self.canvas, color='red')
+
+        # Draw the cities and the current distance
+        for city in self.cities_list:
+            city.draw(self.canvas, color='blue')
+        self.canvas.create_text(
+            PADDING, PADDING // 2,
+            text=f"Distance: {int(self.tsp_solver.best_distance)}",
+            font=('Arial', 20, 'bold'),
+            fill='green',
+            anchor='nw'
+        )
 
 
-# In python, we have this odd construct to catch the main thread and instantiate our Window class
 if __name__ == '__main__':
-    UI()
+    TSPUI().mainloop()
