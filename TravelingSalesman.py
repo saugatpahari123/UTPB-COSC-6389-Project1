@@ -1,231 +1,479 @@
 import math
 import random
 import tkinter as tk
-from tkinter import Menu, Canvas, FALSE
+from tkinter import *
 
-# Configuration parameters
-NUM_CITIES = 25
-CITY_SCALE = 5
-ROAD_WIDTH = 2
-PADDING = 50
+num_cities = 50
+city_scale = 5
+padding = 100
+
+# Parameters for ACO
+alpha = 1.0  # Influence of pheromone
+beta = 5.0  # Influence of heuristic value (visibility)
+evaporation = 0.5  # Pheromone evaporation rate
+ant_count = 20  # Number of ants
+max_iterations = 100  # Maximum number of iterations for ACO
+stagnation_limit = (
+    20  # Number of iterations with no improvement to consider convergence
+)
+
+# Parameters for GA
+population_size = 100
+mutation_rate = 0.02
+crossover_rate = 0.8
+ga_iterations = 5000
 
 
 class Node:
-    """Represents a city node with an (x, y) position and an index identifier."""
-
     def __init__(self, x, y, index):
         self.x = x
         self.y = y
-        self.index = index
+        self.index = index  # Unique identifier for the city
 
-    def draw(self, canvas, color='yellow'):
-        """Draws the city node on the canvas."""
+    def draw(self, canvas, color="black"):
         canvas.create_oval(
-            self.x - CITY_SCALE * 2, self.y - CITY_SCALE * 2,
-            self.x + CITY_SCALE * 2, self.y + CITY_SCALE * 2,
-            fill=color, outline='black'
-        )
-        canvas.create_text(
-            self.x, self.y - CITY_SCALE * 3,
-            text=str(self.index),
-            font=('Arial', 12),
-            fill='blue'
+            self.x - city_scale,
+            self.y - city_scale,
+            self.x + city_scale,
+            self.y + city_scale,
+            fill=color,
+            tags="cities",
         )
 
 
 class Edge:
-    """Represents an edge between two cities."""
-
     def __init__(self, a, b):
         self.city_a = a
         self.city_b = b
         self.length = math.hypot(a.x - b.x, a.y - b.y)
 
-    def draw(self, canvas, color='grey', style=None):
-        """Draws the edge on the canvas."""
-        kwargs = {'fill': color, 'width': ROAD_WIDTH}
-        if style:
-            kwargs['dash'] = style
+    def draw(self, canvas, color="black", dash=(2, 4)):
         canvas.create_line(
-            self.city_a.x, self.city_a.y,
-            self.city_b.x, self.city_b.y,
-            **kwargs
+            self.city_a.x,
+            self.city_a.y,
+            self.city_b.x,
+            self.city_b.y,
+            fill=color,
+            width=1,
+            dash=dash,
+            tags="edges",
         )
 
 
-class TSPSolver:
-    """Solver for the Traveling Salesman Problem using Simulated Annealing."""
-
-    def __init__(self, cities):
-        self.cities = cities
-        self.num_cities = len(cities)
-        self.distance_matrix = self.calculate_distance_matrix()
-        self.current_solution = list(range(self.num_cities))
-        random.shuffle(self.current_solution)
-        self.best_solution = self.current_solution[:]
-        self.best_distance = self.calculate_total_distance(self.best_solution)
-        self.temperature = 10000
-        self.cooling_rate = 0.995
-
-    def calculate_distance_matrix(self):
-        """Calculates the distance matrix for all city pairs."""
-        matrix = [[0] * self.num_cities for _ in range(self.num_cities)]
-        for i in range(self.num_cities):
-            for j in range(i + 1, self.num_cities):
-                dist = math.hypot(
-                    self.cities[i].x - self.cities[j].x,
-                    self.cities[i].y - self.cities[j].y
-                )
-                matrix[i][j] = dist
-                matrix[j][i] = dist
-        return matrix
-
-    def calculate_total_distance(self, solution):
-        """Calculates the total distance of the given solution."""
-        return sum(
-            self.distance_matrix[solution[i]][solution[(i + 1) % len(solution)]]
-            for i in range(len(solution))
-        )
-
-    def swap_cities(self, solution):
-        """Creates a new solution by swapping two cities."""
-        new_solution = solution[:]
-        i, j = random.sample(range(self.num_cities), 2)
-        new_solution[i], new_solution[j] = new_solution[j], new_solution[i]
-        return new_solution
-
-    def anneal(self):
-        """Performs one iteration of the annealing process."""
-        new_solution = self.swap_cities(self.current_solution)
-        current_distance = self.calculate_total_distance(self.current_solution)
-        new_distance = self.calculate_total_distance(new_solution)
-        acceptance_prob = self.acceptance_probability(current_distance, new_distance, self.temperature)
-
-        if acceptance_prob > random.random():
-            self.current_solution = new_solution
-            current_distance = new_distance
-            if current_distance < self.best_distance:
-                self.best_distance = current_distance
-                self.best_solution = self.current_solution[:]
-
-        self.temperature *= self.cooling_rate
-
-    def acceptance_probability(self, current_distance, new_distance, temperature):
-        """Calculates the probability of accepting a worse solution."""
-        if new_distance < current_distance:
-            return 1.0
-        return math.exp((current_distance - new_distance) / temperature)
-
-
-class TSPUI(tk.Tk):
-    """User interface for visualizing the TSP solution."""
-
+class UI(tk.Tk):
     def __init__(self):
-        super().__init__()
-        self.title("Traveling Salesman Problem")
+        tk.Tk.__init__(self)
+        self.title("Traveling Salesman")
         self.option_add("*tearOff", FALSE)
-        self.width, self.height = self.winfo_screenwidth(), self.winfo_screenheight()
-        self.geometry(f"{self.width}x{self.height}+0+0")
+        width, height = self.winfo_screenwidth(), self.winfo_screenheight()
+        self.geometry("%dx%d+0+0" % (width, height))
         self.state("zoomed")
 
-        # Canvas and setup
         self.canvas = Canvas(self)
-        self.canvas.place(x=0, y=0, width=self.width, height=self.height)
-        self.w = self.width - PADDING * 2
-        self.h = self.height - PADDING * 2
+        self.canvas.place(x=0, y=0, width=width, height=height)
+        w = width - padding
+        h = height - padding * 2
 
-        # City list and solver
         self.cities_list = []
-        self.tsp_solver = None
-        self.is_running = False
+        self.edges_list = []
+        self.tour = []
+        self.best_distance = None
+        self.iteration = 0
+        self.stagnant_iterations = 0  # For convergence check
+        self.optimizing = False  # Flag to control optimization loop
+        self.algorithm = "2-opt"  # Default algorithm
+        self.pheromone = {}  # Pheromone levels for ACO
+        self.population = []  # Population for GA
+        self.status_label = tk.Label(self, text="Distance: 0.00")
+        self.status_label.place(x=10, y=10)
 
-        # Menu bar setup
-        self.create_menu()
+        # Algorithm selection
+        self.algorithm_var = tk.StringVar(value="2-opt")
+        self.radio_2opt = tk.Radiobutton(
+            self, text="2-opt", variable=self.algorithm_var, value="2-opt"
+        )
+        self.radio_aco = tk.Radiobutton(
+            self, text="ACO", variable=self.algorithm_var, value="ACO"
+        )
+        self.radio_ga = tk.Radiobutton(
+            self, text="GA", variable=self.algorithm_var, value="GA"
+        )
+        self.radio_2opt.place(x=10, y=40)
+        self.radio_aco.place(x=70, y=40)
+        self.radio_ga.place(x=130, y=40)
 
-    def create_menu(self):
-        """Creates the main menu for generating cities and running the solver."""
+        # Solve button
+        self.solve_button = tk.Button(
+            self, text="Solve", command=self.start_optimization
+        )
+        self.solve_button.place(x=200, y=38)
+
+        def generate_cities():
+            self.cities_list.clear()
+            self.edges_list.clear()
+            self.tour.clear()
+            self.best_distance = None
+            self.iteration = 0
+            self.stagnant_iterations = 0
+            self.optimizing = False
+            self.algorithm = self.algorithm_var.get()
+            self.pheromone.clear()
+            self.population.clear()
+            # Generate cities
+            for idx in range(num_cities):
+                x = random.randint(padding, w)
+                y = random.randint(padding, h)
+                node = Node(x, y, idx)
+                self.cities_list.append(node)
+            # Generate all possible edges
+            N = len(self.cities_list)
+            for i in range(N):
+                for j in range(i + 1, N):
+                    edge = Edge(self.cities_list[i], self.cities_list[j])
+                    self.edges_list.append(edge)
+            draw_cities()
+            # Do not initialize the tour or draw it here
+
+        def draw_cities():
+            self.canvas.delete("all")
+            # Draw all edges as dotted black lines
+            for edge in self.edges_list:
+                edge.draw(self.canvas, color="black", dash=(2, 4))
+            # Draw cities
+            for n in self.cities_list:
+                n.draw(self.canvas)
+            # Do not draw the tour here
+
+        # Menu setup
         menu_bar = Menu(self)
-        self.config(menu=menu_bar)
-        tsp_menu = Menu(menu_bar, tearoff=False)
-        menu_bar.add_cascade(menu=tsp_menu, label='Salesman')
+        self["menu"] = menu_bar
 
-        tsp_menu.add_command(label="Generate", command=self.generate)
-        tsp_menu.add_command(label="Run", command=self.start_solver)
+        # Generate menu
+        menu_generate = Menu(menu_bar)
+        menu_bar.add_cascade(menu=menu_generate, label="Generate", underline=0)
+        menu_generate.add_command(
+            label="Generate Cities", command=generate_cities, underline=0
+        )
 
-    def generate(self):
-        """Generates random cities on the canvas."""
-        self.clear_canvas()
-        self.cities_list.clear()
-        for i in range(NUM_CITIES):
-            self.add_city(i)
-        self.draw_cities()
+        # Optimize menu (Pause and Reset)
+        menu_optimize = Menu(menu_bar)
+        menu_bar.add_cascade(menu=menu_optimize, label="Optimize", underline=0)
+        menu_optimize.add_command(
+            label="Pause Optimization", command=self.pause_optimization, underline=0
+        )
+        menu_optimize.add_command(
+            label="Reset Tour", command=self.reset_tour, underline=0
+        )
 
-    def add_city(self, index):
-        """Adds a city with a random location to the cities list."""
-        x = random.randint(PADDING, self.w)
-        y = random.randint(PADDING, self.h)
-        node = Node(x, y, index)
-        self.cities_list.append(node)
+        self.mainloop()
 
-    def draw_cities(self):
-        """Draws all cities on the canvas."""
-        for city in self.cities_list:
-            city.draw(self.canvas)
+    def initialize_tour(self):
+        self.tour = list(range(len(self.cities_list)))  # Initial tour in order
+        self.best_distance = self.calculate_tour_distance(self.tour)
+        self.iteration = 0
+        self.stagnant_iterations = 0
 
-    def clear_canvas(self):
-        """Clears the canvas."""
-        self.canvas.delete("all")
+    def calculate_tour_distance(self, tour):
+        distance = 0
+        N = len(tour)
+        for i in range(N):
+            a = self.cities_list[tour[i]]
+            b = self.cities_list[tour[(i + 1) % N]]
+            dx = a.x - b.x
+            dy = a.y - b.y
+            distance += math.hypot(dx, dy)
+        return distance
 
-    def start_solver(self):
-        """Starts the TSP solver using Simulated Annealing."""
-        if not self.cities_list:
-            self.generate()
-        self.tsp_solver = TSPSolver(self.cities_list)
-        self.is_running = True
-        self.run_solver()
+    def start_optimization(self):
+        if not self.optimizing:
+            self.algorithm = self.algorithm_var.get()
+            if not self.tour:
+                if self.algorithm == "GA":
+                    self.initialize_population()
+                else:
+                    self.initialize_tour()
+            self.optimizing = True
+            if self.algorithm == "2-opt":
+                self.draw_current_tour()
+                self.two_opt_iteration()
+            elif self.algorithm == "ACO":
+                self.initialize_pheromone()
+                self.draw_current_tour()
+                self.aco_iteration()
+            elif self.algorithm == "GA":
+                self.draw_current_tour()
+                self.ga_iteration()
 
-    def run_solver(self):
-        """Runs the solver and updates the visualization in real-time."""
-        if self.is_running and self.tsp_solver.temperature > 1:
-            self.tsp_solver.anneal()
-            self.clear_canvas()
-            self.draw_solution(self.tsp_solver.current_solution)
-            self.canvas.update()
-            self.after(1, self.run_solver)
+    def pause_optimization(self):
+        self.optimizing = False
+
+    def reset_tour(self):
+        if self.algorithm == "GA":
+            self.initialize_population()
         else:
-            self.is_running = False
-            print(f"Best distance found: {self.tsp_solver.best_distance}")
-            self.display_best_distance()
+            self.initialize_tour()
+        self.draw_current_tour()
 
-    def display_best_distance(self):
-        """Displays the best distance found on the canvas."""
-        self.canvas.create_text(
-            PADDING, PADDING,
-            text=f"Best Distance Found: {int(self.tsp_solver.best_distance)}",
-            font=('Arial', 20, 'bold'),
-            fill='green',
-            anchor='nw'
-        )
+    def two_opt_iteration(self):
+        if not self.optimizing or self.algorithm != "2-opt":
+            return
+        improved = False
+        N = len(self.tour)
+        for i in range(N - 1):
+            for j in range(i + 2, N):
+                if j == N - 1 and i == 0:
+                    continue  # Do not reverse the entire tour
+                # Calculate the change in distance
+                a, b = (
+                    self.cities_list[self.tour[i]],
+                    self.cities_list[self.tour[i + 1]],
+                )
+                c, d = (
+                    self.cities_list[self.tour[j]],
+                    self.cities_list[self.tour[(j + 1) % N]],
+                )
+                delta = (
+                    -math.hypot(a.x - b.x, a.y - b.y)
+                    - math.hypot(c.x - d.x, c.y - d.y)
+                    + math.hypot(a.x - c.x, a.y - c.y)
+                    + math.hypot(b.x - d.x, b.y - d.y)
+                )
+                if delta < -1e-6:
+                    # Perform the 2-opt swap
+                    new_tour = (
+                        self.tour[: i + 1]
+                        + self.tour[i + 1 : j + 1][::-1]
+                        + self.tour[j + 1 :]
+                    )
+                    self.tour = new_tour
+                    self.best_distance += delta
+                    improved = True
+                    self.stagnant_iterations = 0  # Reset stagnation counter
+                    self.draw_current_tour()
+                    break
+            if improved:
+                break
+        self.iteration += 1
+        if improved:
+            self.after(1, self.two_opt_iteration)
+        else:
+            self.optimizing = False
+            print(
+                "2-opt Optimization finished after {} iterations".format(self.iteration)
+            )
+            print("Best distance: {:.2f}".format(self.best_distance))
 
-    def draw_solution(self, solution):
-        """Draws the current solution path on the canvas."""
-        for i in range(len(solution)):
-            city_a = self.cities_list[solution[i]]
-            city_b = self.cities_list[solution[(i + 1) % len(solution)]]
-            edge = Edge(city_a, city_b)
-            edge.draw(self.canvas, color='red')
+    # ACO-specific methods
+    def initialize_pheromone(self):
+        self.pheromone.clear()
+        N = len(self.cities_list)
+        initial_pheromone = 1.0
+        for i in range(N):
+            for j in range(N):
+                if i != j:
+                    self.pheromone[(i, j)] = initial_pheromone
 
-        # Draw the cities and the current distance
-        for city in self.cities_list:
-            city.draw(self.canvas, color='blue')
-        self.canvas.create_text(
-            PADDING, PADDING // 2,
-            text=f"Distance: {int(self.tsp_solver.best_distance)}",
-            font=('Arial', 20, 'bold'),
-            fill='green',
-            anchor='nw'
-        )
+    def aco_iteration(self):
+        if not self.optimizing or self.algorithm != "ACO":
+            return
+        N = len(self.cities_list)
+        all_tours = []
+        all_distances = []
+        best_iteration_distance = None
+        for ant in range(ant_count):
+            tour = self.construct_solution()
+            distance = self.calculate_tour_distance(tour)
+            all_tours.append(tour)
+            all_distances.append(distance)
+            if self.best_distance is None or distance < self.best_distance:
+                self.best_distance = distance
+                self.tour = tour
+                self.draw_current_tour()
+                self.stagnant_iterations = 0  # Reset stagnation counter
+            if best_iteration_distance is None or distance < best_iteration_distance:
+                best_iteration_distance = distance
+        else:
+            self.stagnant_iterations += 1  # No improvement in this iteration
+        self.update_pheromones(all_tours, all_distances)
+        self.iteration += 1
+        if (
+            self.iteration < max_iterations
+            and self.stagnant_iterations < stagnation_limit
+        ):
+            self.after(1, self.aco_iteration)
+        else:
+            self.optimizing = False
+            print(
+                "ACO Optimization finished after {} iterations".format(self.iteration)
+            )
+            print("Best distance: {:.2f}".format(self.best_distance))
+
+    def construct_solution(self):
+        N = len(self.cities_list)
+        unvisited = set(range(N))
+        current_city = random.choice(tuple(unvisited))
+        tour = [current_city]
+        unvisited.remove(current_city)
+        while unvisited:
+            probabilities = []
+            total = 0.0
+            for city in unvisited:
+                tau = self.pheromone[(current_city, city)] ** alpha
+                eta = (1.0 / self.distance(current_city, city)) ** beta
+                prob = tau * eta
+                probabilities.append((city, prob))
+                total += prob
+            # Normalize probabilities
+            probabilities = [(city, prob / total) for city, prob in probabilities]
+            # Choose next city based on probability
+            rand = random.uniform(0, 1)
+            cumulative = 0.0
+            for city, prob in probabilities:
+                cumulative += prob
+                if cumulative >= rand:
+                    next_city = city
+                    break
+            else:
+                next_city = probabilities[-1][0]  # In case of rounding errors
+            tour.append(next_city)
+            unvisited.remove(next_city)
+            current_city = next_city
+        return tour
+
+    def update_pheromones(self, all_tours, all_distances):
+        # Evaporate pheromones
+        for key in self.pheromone:
+            self.pheromone[key] *= 1 - evaporation
+            if self.pheromone[key] < 1e-6:  # Avoid pheromone levels dropping to zero
+                self.pheromone[key] = 1e-6
+        # Deposit new pheromones
+        for tour, distance in zip(all_tours, all_distances):
+            pheromone_deposit = 1.0 / distance
+            for i in range(len(tour)):
+                from_city = tour[i]
+                to_city = tour[(i + 1) % len(tour)]
+                self.pheromone[(from_city, to_city)] += pheromone_deposit
+                self.pheromone[
+                    (to_city, from_city)
+                ] += pheromone_deposit  # Assuming symmetric TSP
+
+    # GA-specific methods
+    def initialize_population(self):
+        self.population.clear()
+        N = len(self.cities_list)
+        self.best_distance = None
+        self.tour = None
+        for _ in range(population_size):
+            tour = list(range(N))
+            random.shuffle(tour)
+            distance = self.calculate_tour_distance(tour)
+            if self.best_distance is None or distance < self.best_distance:
+                self.best_distance = distance
+                self.tour = tour
+            self.population.append(tour)
+        self.iteration = 0
+
+    def ga_iteration(self):
+        if not self.optimizing or self.algorithm != "GA":
+            return
+        new_population = []
+        fitness_scores = []
+        total_fitness = 0.0
+
+        # Calculate fitness scores (inverse of distance)
+        for tour in self.population:
+            distance = self.calculate_tour_distance(tour)
+            fitness = 1.0 / distance
+            fitness_scores.append(fitness)
+            total_fitness += fitness
+            if distance < self.best_distance:
+                self.best_distance = distance
+                self.tour = tour[:]
+                self.draw_current_tour()
+
+        # Normalize fitness scores
+        probabilities = [fitness / total_fitness for fitness in fitness_scores]
+
+        # Selection and Crossover
+        for _ in range(population_size // 2):
+            parent1 = self.select_tour(probabilities)
+            parent2 = self.select_tour(probabilities)
+            if random.random() < crossover_rate:
+                child1, child2 = self.crossover(parent1, parent2)
+            else:
+                child1, child2 = parent1[:], parent2[:]
+            # Mutation
+            if random.random() < mutation_rate:
+                self.mutate(child1)
+            if random.random() < mutation_rate:
+                self.mutate(child2)
+            new_population.extend([child1, child2])
+
+        self.population = new_population
+        self.iteration += 1
+        if self.iteration < ga_iterations:
+            self.after(1, self.ga_iteration)
+        else:
+            self.optimizing = False
+            print("GA Optimization finished after {} iterations".format(self.iteration))
+            print("Best distance: {:.2f}".format(self.best_distance))
+
+    def select_tour(self, probabilities):
+        rand = random.uniform(0, 1)
+        cumulative = 0.0
+        for tour, prob in zip(self.population, probabilities):
+            cumulative += prob
+            if cumulative >= rand:
+                return tour
+        return self.population[-1]  # In case of rounding errors
+
+    def crossover(self, parent1, parent2):
+        N = len(parent1)
+        start, end = sorted(random.sample(range(N), 2))
+        child1 = [None] * N
+        child1[start : end + 1] = parent1[start : end + 1]
+        pointer = 0
+        for city in parent2:
+            if city not in child1:
+                while child1[pointer] is not None:
+                    pointer += 1
+                child1[pointer] = city
+
+        child2 = [None] * N
+        child2[start : end + 1] = parent2[start : end + 1]
+        pointer = 0
+        for city in parent1:
+            if city not in child2:
+                while child2[pointer] is not None:
+                    pointer += 1
+                child2[pointer] = city
+
+        return child1, child2
+
+    def mutate(self, tour):
+        i, j = random.sample(range(len(tour)), 2)
+        tour[i], tour[j] = tour[j], tour[i]
+
+    def distance(self, city_index1, city_index2):
+        a = self.cities_list[city_index1]
+        b = self.cities_list[city_index2]
+        return math.hypot(a.x - b.x, a.y - b.y)
+
+    def draw_current_tour(self):
+        if self.best_distance is None or self.tour is None:
+            return  # Do not draw if no tour is available
+        self.canvas.delete("tour")
+        N = len(self.tour)
+        for i in range(N):
+            a = self.cities_list[self.tour[i]]
+            b = self.cities_list[self.tour[(i + 1) % N]]
+            self.canvas.create_line(
+                a.x, a.y, b.x, b.y, fill="red", width=2, tags="tour"
+            )
+        # No need to redraw cities or edges; they are already drawn
+        self.status_label.config(text="Distance: {:.2f}".format(self.best_distance))
+        self.canvas.update()
 
 
-if __name__ == '__main__':
-    TSPUI().mainloop()
+if __name__ == "__main__":
+    UI()
