@@ -4,269 +4,283 @@ import tkinter as tk
 from tkinter import *
 import time
 
-num_items = 50  
-min_value = 10
-max_value = 100
-target_sum = 500 
-max_generations = 100
-pop_size = 50
-mutation_rate = 0.1
-sleep_time = 0.2  
+# Problem parameters
+NUM_ITEMS = 50
+MIN_VALUE = 10
+MAX_VALUE = 100
+TARGET_SUM = 1000
+MAX_GENERATIONS = 100
+POPULATION_SIZE = 50
+MUTATION_RATE = 0.1
+SLEEP_TIME = 0.2
+
 
 class Item:
-    def __init__(self):
-        self.value = random.randint(min_value, max_value)
+    """Represents an item with a random value."""
 
-class SubsetSumSolver(tk.Tk):
     def __init__(self):
-        tk.Tk.__init__(self)
+        self.value = random.randint(MIN_VALUE, MAX_VALUE)
+
+
+class SubsetSumApp(tk.Tk):
+    """Main application for solving the Subset Sum problem."""
+
+    def __init__(self):
+        super().__init__()
         self.title("Subset Sum Problem Solver")
-        self.width, self.height = self.winfo_screenwidth(), self.winfo_screenheight()
-        self.geometry(f"{self.width}x{self.height}+0+0")
-        self.state("zoomed")
-        background_color = "#000000"  
-        self.configure(bg=background_color)
-        self.title_label = Label(
-            self, 
-            text="\nLet's check if the set has a subset that exactly adds up to 500\n",
-            font=("Ethnocentric", 15),
-            bg="#d9d9f3")
-        self.title_label.pack(pady=20)
-        self.items = [Item() for _ in range(num_items)]
-        self.target = target_sum
+        self.geometry("1200x700")
+        self.configure(bg="#282c34")
+
+        # Solver state
+        self.items = [Item() for _ in range(NUM_ITEMS)]
+        self.target_sum = TARGET_SUM
+        self.running = False
         self.selected_solver = tk.StringVar(value="GA")
         self.progress_data = []
-        self.create_solver_menu()
-        self.render_items()
-        self.create_control_buttons()
-        self.status_label = Label(self, text="     ", font=("Ethnocentric", 25), bg=background_color, fg="#333333")
-        self.status_label.place(x=self.width - 1200, y=600)
-        self.ga_solver = None
-        self.pso_solver = None
-        self.running = False
 
-    def create_solver_menu(self):
+        # Layout setup
+        self.create_ui()
 
-        menu_bar = Menu(self)
-        solver_menu = Menu(menu_bar, tearoff=0)
-        solver_menu.add_radiobutton(label="Genetic Algorithm Optimization", variable=self.selected_solver, value="GA")
-        solver_menu.add_radiobutton(label="Particle Swarm Optimization", variable=self.selected_solver, value="PSO")
-        menu_bar.add_cascade(label="Select Optimizer", menu=solver_menu)
-        self.config(menu=menu_bar)
+    def create_ui(self):
+        """Create the user interface components."""
+        # Title label
+        title_label = Label(
+            self,
+            text="Subset Sum Problem Solver",
+            font=("Arial", 18, "bold"),
+            bg="#61afef",
+            fg="#ffffff",
+            pady=10
+        )
+        title_label.pack(fill=tk.X)
 
-    def render_items(self):
+        # Solver selection menu
+        solver_frame = tk.Frame(self, bg="#282c34")
+        solver_frame.pack(pady=10)
+        tk.Label(solver_frame, text="Select Solver:", bg="#282c34", fg="#ffffff", font=("Arial", 12)).pack(side=tk.LEFT, padx=5)
+        tk.Radiobutton(solver_frame, text="Genetic Algorithm", variable=self.selected_solver, value="GA", bg="#282c34", fg="#ffffff").pack(side=tk.LEFT, padx=5)
+        tk.Radiobutton(solver_frame, text="Particle Swarm Optimization", variable=self.selected_solver, value="PSO", bg="#282c34", fg="#ffffff").pack(side=tk.LEFT, padx=5)
 
+        # Items display
+        self.items_label = Label(self, text="", font=("Arial", 12), bg="#61afef", fg="#282c34", wraplength=800, justify=tk.LEFT)
+        self.items_label.pack(pady=10)
+        self.update_items_display()
+
+        # Control buttons
+        button_frame = tk.Frame(self, bg="#282c34")
+        button_frame.pack(pady=10)
+        tk.Button(button_frame, text="Start", command=self.start_solver, bg="#98c379", fg="#282c34").pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Stop", command=self.stop_solver, bg="#e06c75", fg="#282c34").pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Report", command=self.show_report, bg="#56b6c2", fg="#282c34").pack(side=tk.LEFT, padx=5)
+
+        # Status label
+        self.status_label = Label(self, text="Status: Waiting...", font=("Arial", 12), bg="#282c34", fg="#ffffff")
+        self.status_label.pack(pady=10)
+
+    def update_items_display(self):
+        """Update the items display in the UI."""
         items_text = "\n".join(
-            ", ".join(f"{item.value}" for item in self.items[i:i + 10]) 
+            ", ".join(f"{item.value}" for item in self.items[i:i + 10])
             for i in range(0, len(self.items), 10)
         )
-        self.items_label = Label(self, text=f"\n                       ITEMS:\n \n{items_text}\n", font=("Ethnocentric", 25),bg="#d9d9f3", fg="#333333", justify=LEFT)
-        self.items_label.place(x=300, y=280, width=1000)
-
-    def create_control_buttons(self):
-
-        button_font = ("Ethnocentric", 12)        
-        self.start_button = Button(self, text="Start", command=self.start_solver, font=button_font,bg="#d9d9f3", fg="#333333", width=10, height=2)
-        self.start_button.place(x=550, y=770)
-        self.stop_button = Button(self, text="Stop", command=self.stop_solver, font=button_font,bg="#d9d9f3", fg="#333333", width=10, height=2)
-        self.stop_button.place(x=700, y=770)
-        self.show_report_button = Button(self, text="Report", command=self.show_report, font=button_font,bg="#d9d9f3", fg="#333333", width=10, height=2)
-        self.show_report_button.place(x=850, y=770)
+        self.items_label.config(text=f"Items:\n{items_text}")
 
     def start_solver(self):
-
-        solver_type = self.selected_solver.get()
+        """Start the selected optimization solver."""
         self.running = True
         self.progress_data.clear()
+        solver_type = self.selected_solver.get()
 
         if solver_type == "GA":
-            self.ga_solver = GeneticAlgorithmSolver(self.items, self.target, self)
-            self.ga_solver.run()
+            GeneticAlgorithm(self.items, self.target_sum, self).run()
         elif solver_type == "PSO":
-            self.pso_solver = ParticleSwarmSolver(self.items, self.target, self)
-            self.pso_solver.run()
+            ParticleSwarmOptimization(self.items, self.target_sum, self).run()
 
     def stop_solver(self):
-
+        """Stop the solver."""
         self.running = False
-        print("Solver stopped.")
+        self.status_label.config(text="Status: Solver stopped.")
 
     def show_report(self):
+        """Show the optimization progress report."""
         report_window = tk.Toplevel(self)
-        report_window.title("Summary Report")
-        report_text = Text(report_window, wrap='word', font=("Arial", 11))
-        report_text.pack(expand=True, fill='both')
-        report_text.tag_configure("title", font=("Arial", 14, "bold"))
-        report_text.insert(END, "                          Optimization Summary Report\n\n", "title")
-        report_text.tag_configure("header", font=("Arial", 12, "bold"))
-        report_text.insert(END, "Progress Details:\n", "header")
-        report_text.insert(END, "-"*50 + "\n", "header") 
-        previous_fitness = None
-        for generation, fitness in self.progress_data:
-            if fitness != previous_fitness:
-                report_text.insert(END, f"Generation {generation}:      Fitness = {fitness:.2f}\n")
-                previous_fitness = fitness
-        report_text.insert(END, "\n" + "-"*50 + "\n", "header")
-        report_text.config(state="disabled")
+        report_window.title("Progress Report")
+        report_text = tk.Text(report_window, wrap="word", font=("Arial", 10))
+        report_text.pack(fill=tk.BOTH, expand=True)
+        report_text.insert(tk.END, "Optimization Progress:\n\n")
 
-class GeneticAlgorithmSolver:
+        for generation, fitness in self.progress_data:
+            report_text.insert(tk.END, f"Generation {generation}: Fitness = {fitness:.2f}\n")
+
+
+class GeneticAlgorithm:
+    """Genetic Algorithm for solving the Subset Sum problem."""
+
     def __init__(self, items, target, ui):
         self.items = items
         self.target = target
         self.ui = ui
         self.population = self.initialize_population()
-        self.elitism_count = 2  
 
     def initialize_population(self):
-
-        return [[random.choice([True, False]) for _ in range(len(self.items))] for _ in range(pop_size)]
+        """Generate an initial random population."""
+        return [[random.choice([True, False]) for _ in range(len(self.items))] for _ in range(POPULATION_SIZE)]
 
     def fitness(self, genome):
-        total = sum(item.value for item, included in zip(self.items, genome) if included)
-        if total > self.target:
-            return (total - self.target) * 1.5  
-        else:
-            return abs(total - self.target)
+        """Calculate the fitness of a genome."""
+        total = sum(item.value for item, selected in zip(self.items, genome) if selected)
+        return abs(total - self.target) if total <= self.target else float("inf")
 
     def select_parents(self):
+        """Select two parents using tournament selection."""
         tournament_size = 5
-        def tournament():
-            candidates = random.sample(self.population, tournament_size)
-            return min(candidates, key=self.fitness)
-        return tournament(), tournament()
+        return min(random.sample(self.population, tournament_size), key=self.fitness), \
+               min(random.sample(self.population, tournament_size), key=self.fitness)
 
     def crossover(self, parent1, parent2):
-        crossover_point = random.randint(1, len(parent1) - 1)
-        child = parent1[:crossover_point] + parent2[crossover_point:]
-        return child
+        """Perform single-point crossover."""
+        point = random.randint(1, len(parent1) - 1)
+        return parent1[:point] + parent2[point:]
 
     def mutate(self, genome):
+        """Mutate a genome with a small probability."""
         for i in range(len(genome)):
-            if random.random() < mutation_rate:
+            if random.random() < MUTATION_RATE:
                 genome[i] = not genome[i]
         return genome
 
     def run(self):
-        last_fitness = None  
-
-        for generation in range(max_generations):
+        """Run the genetic algorithm."""
+        for generation in range(MAX_GENERATIONS):
             if not self.ui.running:
                 break
+
+            # Evaluate fitness and track progress
             self.population.sort(key=self.fitness)
             best_genome = self.population[0]
             best_fitness = self.fitness(best_genome)
-            best_sum = sum(item.value for item, included in zip(self.items, best_genome) if included)
-            if best_fitness != last_fitness:
-                self.ui.progress_data.append((generation, best_fitness))
-                last_fitness = best_fitness
-            subset = [item.value for item, included in zip(self.items, best_genome) if included]
-            subset_text = f"Subset: {subset}"
-            self.ui.status_label.config(
-                text=f" {subset_text}\n"
-                    f"Sum: {best_sum}  "
-                    f"Gen: {generation}\n",
-                    font=("Ethnocentric", 15),bg="#d9d9f3"
-            )
+            self.ui.progress_data.append((generation, best_fitness))
+
+            # Update UI
+            selected_values = [item.value for item, selected in zip(self.items, best_genome) if selected]
+            self.ui.status_label.config(text=f"Generation {generation}: Best Sum = {sum(selected_values)}")
             self.ui.update()
-            if best_fitness == 0:
+
+            if best_fitness == 0:  # Exact match found
                 break
 
-            new_population = self.population[:self.elitism_count]
-            while len(new_population) < pop_size:
+            # Create the next generation
+            new_population = self.population[:2]  # Elitism
+            while len(new_population) < POPULATION_SIZE:
                 parent1, parent2 = self.select_parents()
                 child = self.crossover(parent1, parent2)
-                child = self.mutate(child)
-                new_population.append(child)
+                new_population.append(self.mutate(child))
+
             self.population = new_population
-            time.sleep(sleep_time)
-      
-class ParticleSwarmSolver:
+            time.sleep(SLEEP_TIME)
+
+
+class ParticleSwarmOptimization:
+    """Particle Swarm Optimization for solving the Subset Sum problem."""
+
     def __init__(self, items, target, ui):
         self.items = items
         self.target = target
         self.ui = ui
+        self.num_particles = POPULATION_SIZE
         self.particles = self.initialize_particles()
-        self.velocities = [[0.0] * len(self.items) for _ in range(pop_size)]
-        self.best_particle_positions = self.particles[:]
-        self.best_particle_fitness = [self.fitness(p) for p in self.particles]
+        self.velocities = [[0.0] * len(self.items) for _ in range(self.num_particles)]
+        self.personal_best_positions = self.particles[:]
+        self.personal_best_fitness = [self.fitness(p) for p in self.particles]
         self.global_best_position = min(self.particles, key=self.fitness)
         self.global_best_fitness = self.fitness(self.global_best_position)
 
     def initialize_particles(self):
-        return [[random.choice([True, False]) for _ in range(len(self.items))] for _ in range(pop_size)]
+        """Generate initial random particles."""
+        return [[random.choice([True, False]) for _ in range(len(self.items))] for _ in range(self.num_particles)]
 
     def fitness(self, particle):
+        """Calculate fitness of a particle."""
         total = sum(item.value for item, included in zip(self.items, particle) if included)
-        if total > 1500:
-            return (total - self.target) * 3  
-        elif total > self.target:
-            return abs(total - self.target) ** 1.2  
+        if total > self.target:
+            return (total - self.target) ** 2  # Penalize overshooting
         else:
-            return abs(total - self.target)
+            return abs(self.target - total)
 
     def update_velocity_and_position(self, particle_idx, inertia_weight):
+        """Update the velocity and position of a particle."""
         cognitive_weight = 1.5
         social_weight = 1.5
 
         for i in range(len(self.particles[particle_idx])):
-            r1, r2 = random.random(), random.random()
+            r1 = random.random()
+            r2 = random.random()
+
+            # Update velocity
             self.velocities[particle_idx][i] = (
-                inertia_weight * self.velocities[particle_idx][i] +
-                cognitive_weight * r1 * (self.best_particle_positions[particle_idx][i] - self.particles[particle_idx][i]) +
-                social_weight * r2 * (self.global_best_position[i] - self.particles[particle_idx][i])
+                inertia_weight * self.velocities[particle_idx][i]
+                + cognitive_weight * r1 * (self.personal_best_positions[particle_idx][i] - self.particles[particle_idx][i])
+                + social_weight * r2 * (self.global_best_position[i] - self.particles[particle_idx][i])
             )
-            if random.random() < 1 / (1 + math.exp(-self.velocities[particle_idx][i])):
-                self.particles[particle_idx][i] = not self.particles[particle_idx][i]
+
+            # Sigmoid function for binary decisions
+            sigmoid = 1 / (1 + math.exp(-self.velocities[particle_idx][i]))
+            self.particles[particle_idx][i] = random.random() < sigmoid
 
     def run(self):
-        stagnation_limit = 99
+        """Run the PSO algorithm."""
+        max_stagnation = 50
         stagnation_counter = 0
-        last_best_fitness = float('inf')
-        last_fitness = None  
+        last_best_fitness = float("inf")
 
-        for iteration in range(max_generations):
+        for generation in range(MAX_GENERATIONS):
             if not self.ui.running:
                 break
-            inertia_weight = 0.9 - ((0.9 - 0.4) * iteration / max_generations)
 
-            for idx in range(pop_size):
+            inertia_weight = 0.9 - (generation / MAX_GENERATIONS) * (0.9 - 0.4)
+
+            for idx in range(self.num_particles):
                 self.update_velocity_and_position(idx, inertia_weight)
+
+                # Update personal best
                 current_fitness = self.fitness(self.particles[idx])
+                if current_fitness < self.personal_best_fitness[idx]:
+                    self.personal_best_positions[idx] = self.particles[idx][:]
+                    self.personal_best_fitness[idx] = current_fitness
 
-                if current_fitness < self.best_particle_fitness[idx]:
-                    self.best_particle_positions[idx] = self.particles[idx][:]
-                    self.best_particle_fitness[idx] = current_fitness
-
+                # Update global best
                 if current_fitness < self.global_best_fitness:
                     self.global_best_position = self.particles[idx][:]
                     self.global_best_fitness = current_fitness
 
-            if self.global_best_fitness != last_fitness:
-                self.ui.progress_data.append((iteration, self.global_best_fitness))
-                last_fitness = self.global_best_fitness
+            # Track progress
+            if self.global_best_fitness != last_best_fitness:
+                stagnation_counter = 0
+                self.ui.progress_data.append((generation, self.global_best_fitness))
+                last_best_fitness = self.global_best_fitness
+            else:
+                stagnation_counter += 1
 
+            # Update UI
             subset = [item.value for item, included in zip(self.items, self.global_best_position) if included]
             subset_sum = sum(subset)
             self.ui.status_label.config(
-                text=f" {subset}\n"
-                f"Subset Sum: {subset_sum}"
-                f"Gen: {iteration}\n",
-                font=("Ethnocentric", 15))
+                text=f"Generation: {generation}\nSubset: {subset}\nSum: {subset_sum}\nFitness: {self.global_best_fitness:.2f}",
+                font=("Arial", 12),
+                bg="#61afef",
+                fg="#282c34"
+            )
             self.ui.update()
 
-            if self.global_best_fitness == last_best_fitness:
-                stagnation_counter += 1
-            else:
-                stagnation_counter = 0
-                last_best_fitness = self.global_best_fitness
-
-            if stagnation_counter >= stagnation_limit or self.global_best_fitness == 0:
-                print("Stopping due to stagnation or exact match.")
+            # Stop if stagnation or exact match
+            if stagnation_counter >= max_stagnation or self.global_best_fitness == 0:
+                print("Stopping due to stagnation or exact solution.")
                 break
 
-            time.sleep(sleep_time)
+            time.sleep(SLEEP_TIME)
 
 
-if __name__ == '__main__':
-    app = SubsetSumSolver()
+
+if __name__ == "__main__":
+    app = SubsetSumApp()
     app.mainloop()
