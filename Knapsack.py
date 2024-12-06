@@ -3,24 +3,24 @@ import random
 import tkinter as tk
 from tkinter import *
 
-# Problem parameters
-num_items = 100
-frac_target = 0.7
-min_value = 128
-max_value = 2048
+# Problem parameters for the Knapsack optimization problem
+num_items = 100           # Total number of items to generate
+frac_target = 0.7         # Fraction of items to include in the target
+min_value = 128           # Minimum value of an item
+max_value = 2048          # Maximum value of an item
 
-# UI parameters
-screen_padding = 25
-item_padding = 5
-stroke_width = 5
+# UI parameters for layout and visualization
+screen_padding = 25       # Padding around the canvas
+item_padding = 5          # Padding between items
+stroke_width = 5          # Width of rectangle borders
 
-# Genetic Algorithm parameters
-num_generations = 1000
-pop_size = 50
-elitism_count = 2
-mutation_rate = 0.05  # Adjusted mutation rate
+# Genetic Algorithm parameters for optimization
+num_generations = 1000    # Maximum number of generations to run
+pop_size = 50             # Population size in each generation
+elitism_count = 2         # Number of top solutions to retain without modification
+mutation_rate = 0.05      # Probability of mutation for each gene
 
-sleep_time = 100  # in milliseconds
+sleep_time = 100          # Time delay (in milliseconds) between UI updates
 
 # Helper function to generate a random RGB color
 def random_rgb_color():
